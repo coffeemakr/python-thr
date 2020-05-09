@@ -1,1 +1,1 @@
-from .api import Threema
+from .api import Threema, __version__

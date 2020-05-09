@@ -1,11 +1,33 @@
-from .messages import Message, TextMessage
+from .messages import Message, TextMessage, FileMessage
 from .cache import InMemoryCache
+from .crypto import PublicKey, SecretKey, EncryptedBox, box_encrypt, encrypt_file, encrypt_thumbnail
+from .utils import hash_email, hash_phone
 import requests
 import urllib.parse
-import libnacl.public
+from collections import namedtuple
+from typing import Text
+import mimetypes
+
+__version__ = '0.1'
 
 def _url_join(base_url, *parts):
     return base_url + '/'.join(map(urllib.parse.quote, parts))
+
+def _check_identity(identity):
+    if len(identity) != 8:
+        raise ValueError("identity must be 8 characters long")
+
+RemoteBlob = namedtuple("RemoteBlob", ["id", "key"])
+
+class Contact:
+    def __init__(self, identity: str, public_key: PublicKey):
+        _check_identity(identity)
+        self.identity = identity
+        self.public_key = public_key
+
+    def __str__(self) -> str:
+        encoded_pk = self.public_key.hex_pk().decode('ascii')
+        return f"Contact(identity={self.identity}, public_key={encoded_pk})"
 
 class Threema:
     def __init__(self, identity: str, secret, key, base_url="https://msgapi.threema.ch/", cache=None):
@@ -14,11 +36,10 @@ class Threema:
         self.cache = cache 
 
         key = bytes.fromhex(key)
-        if len(identity) != 8:
-            raise ValueError("identity must be 8 characters long")
+        _check_identity(identity)
         self.identity = identity
         self.secret = secret
-        self.key = libnacl.public.SecretKey(key)
+        self.secret_key = SecretKey(key)
         self.base_url = base_url
 
     def _query(self, method, *url_parts, **kwargs):
@@ -28,30 +49,75 @@ class Threema:
         respone.raise_for_status()
         return respone
 
-    def lookup_pubkey(self, identity: str) -> bytes:
-        if len(identity) != 8:
-            raise ValueError("identity must be 8 characters long")
+    def lookup_identity_by_email(self, email) -> str:
+        r = self._query("GET", "lookup", "email_hash", hash_email(email), params={
+            'from': self.identity, 
+            'secret': self.secret
+        })
+        return r.text
+
+    def lookup_identity_by_phone(self, phone) -> str:
+        r = self._query("GET", "lookup", "phone_hash", hash_phone(phone), params={
+            'from': self.identity, 
+            'secret': self.secret
+        })
+        return r.text
+
+    def lookup_pubkey(self, identity: str) -> PublicKey:
+        _check_identity(identity)
         response = self._query("GET", 'pubkeys', identity, params={
             'from': self.identity, 
             'secret': self.secret
         })
-        return bytes.fromhex(response.text)
+        return PublicKey(bytes.fromhex(response.text))
+
+    def get_credits(self) -> int:
+        r = self._query("GET", "credits", params={
+            'from': self.identity, 
+            'secret': self.secret
+        })
+        return int(r.text)
+
+    def lookup(self, identity: str) -> Contact:
+        public_key = self.lookup_pubkey(identity)
+        return Contact(identity=identity, public_key=public_key)
 
     def get_pubkey(self, identity: str) -> bytes:
         return self.cache.get_or_call(identity, self.lookup_pubkey)
 
-    def send_message(self, message: Message, recipient: str):
+    def upload_raw_blob(self, data: bytes) -> bytes:
         '''
-        Send a message
+        Uploads a blob and returns the blob ID in binary form.
         '''
-        public_key = self.get_pubkey(recipient)
-        encrypted = message.encrypt_for(our_secret=self.key, their_public=public_key)
+        response = self._query("POST", 'upload_blob', params={
+            'from': self.identity, 
+            'secret': self.secret
+        }, files={'blob': ('blob', data, 'application/octet-stream')})
+        return bytes.fromhex(response.text)
+    
+    def upload_blob(self, data: bytes, key=None) -> RemoteBlob:
+        '''
+        Encrypt and upload binary data. If the key is None, a random key will be generated
+        '''
+        encrypted = encrypt_file(content=data, key=key)
+        identifier = self.upload_raw_blob(encrypted.data)
+        return RemoteBlob(id=identifier, key=encrypted.key)
+
+    def send_message(self, message: Message, recipient: Contact):
+        '''
+        Send an end-to-end encrypted message
+        '''
+        encrypted = box_encrypt(
+            content=message.to_bytes(),
+            secret_key=self.secret_key,
+            public_key=recipient.public_key)
+
         response = self._query("POST", "send_e2e", data={
             'nonce': encrypted.nonce.hex(),
             'box': encrypted.data.hex(),
             'secret': self.secret,
             'from': self.identity,
-            'to': recipient
+            'to': recipient.identity
         }, headers={
             'Content-Type': 'application/x-www-form-urlencoded'
         })
@@ -61,4 +127,48 @@ class Threema:
         message = TextMessage(content)
         return self.send_message(
             message=message,
-            recipient=recipient)
+            recipient=recipient)    
+
+    def upload_file(self, filename: Text, mimetype=None, key=None) -> FileMessage:
+        '''
+        Upload a file and prepare a file message for it.
+        
+        This function will pre-fill the following fields:
+         * size
+         * mime_type
+         * size
+         * blob_id
+         * key
+         * filename
+        '''
+        with open(filename, 'rb') as infile:
+            content = infile.read()
+
+        if mimetype is None:
+            mimetype, _ = mimetypes.guess_type(filename) or 'application/octet-stream'
+        
+        blob = self.upload_blob(data=content, key=key)
+
+        return FileMessage(blob_id=blob.id, key=blob.key, mime_type=mimetype, size=len(content), filename=filename)
+
+    def upload_thumbnail(self, filename: Text, key) -> FileMessage:
+        '''
+        Upload a file and prepare a file message for it.
+        
+        This function will pre-fill the following fields:
+         * size
+         * mime_type
+         * size
+         * blob_id
+         * key
+         * filename
+        '''
+        with open(filename, 'rb') as infile:
+            content = infile.read()
+
+        encrypted = encrypt_thumbnail(content=content, key=key)
+        return self.upload_raw_blob(encrypted.data)
+        
+
+
+ 
