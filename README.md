@@ -1,6 +1,8 @@
 # Thr
 A small Threema Gateway library that focuses on easy usage.
 
+![Python package](https://github.com/coffeemakr/python-thr/workflows/Python%20package/badge.svg)
+
 ## Functionality
 
  - [x] Send text messages
