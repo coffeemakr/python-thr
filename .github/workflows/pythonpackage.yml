@@ -35,5 +35,9 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 thr --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test
+      env:
+        THREEMA_IDENTITY: ${{ secrets.THREEMA_IDENTITY }}
+        THREEMA_SECRET: ${{ secrets.THREEMA_SECRET }}
+        THREEMA_KEY: ${{ secrets.THREEMA_KEY }}
       run: |
         python setup.py test
