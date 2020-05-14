@@ -1,5 +1,4 @@
 from .messages import Message, TextMessage, FileMessage
-from .cache import InMemoryCache
 from .crypto import PublicKey, SecretKey, EncryptedBox, box_encrypt, encrypt_file, encrypt_thumbnail
 from .utils import hash_email, hash_phone
 import requests
@@ -7,6 +6,7 @@ import urllib.parse
 from collections import namedtuple
 from typing import Text
 import mimetypes
+import os
 
 __version__ = '0.1'
 
@@ -30,17 +30,38 @@ class Contact:
         return f"Contact(identity={self.identity}, public_key={encoded_pk})"
 
 class Threema:
-    def __init__(self, identity: str, secret, key, base_url="https://msgapi.threema.ch/", cache=None):
-        if cache is None:
-            cache = InMemoryCache()
-        self.cache = cache 
+    key: SecretKey
+    def __init__(self, identity: str, secret, key, base_url="https://msgapi.threema.ch/"):
+        if not isinstance(key, SecretKey):
+            if len(key) == 32:
+                key = SecretKey(key)    
+            elif len(key) == 64:
+                key = SecretKey(bytes.fromhex(key))
+            else:
+                raise ValueError("Invalid key length. Expected 64 for hex")
 
-        key = bytes.fromhex(key)
         _check_identity(identity)
         self.identity = identity
         self.secret = secret
-        self.secret_key = SecretKey(key)
+        self.key = key
         self.base_url = base_url
+
+    @classmethod
+    def from_environment(cls):
+        secret = os.environ.get("THREEMA_SECRET")
+        if secret is None:
+            raise ValueError("THREEMA_SECRET is not set")
+
+        identity = os.environ.get("THREEMA_IDENTITY")
+        if identity is None:
+            raise ValueError("THREEMA_IDENTITY is not set")
+
+        key = os.environ.get("THREEMA_KEY")
+        if key is None:
+            raise ValueError("THREEMA_KEY is not set")
+        
+        return cls(identity=identity, secret=secret, key=key)
+    
 
     def _query(self, method, *url_parts, **kwargs):
         url = _url_join(self.base_url, *url_parts)   
@@ -82,9 +103,6 @@ class Threema:
         public_key = self.lookup_pubkey(identity)
         return Contact(identity=identity, public_key=public_key)
 
-    def get_pubkey(self, identity: str) -> bytes:
-        return self.cache.get_or_call(identity, self.lookup_pubkey)
-
     def upload_raw_blob(self, data: bytes) -> bytes:
         '''
         Uploads a blob and returns the blob ID in binary form.
@@ -109,7 +127,7 @@ class Threema:
         '''
         encrypted = box_encrypt(
             content=message.to_bytes(),
-            secret_key=self.secret_key,
+            secret_key=self.key,
             public_key=recipient.public_key)
 
         response = self._query("POST", "send_e2e", data={
@@ -168,7 +186,3 @@ class Threema:
 
         encrypted = encrypt_thumbnail(content=content, key=key)
         return self.upload_raw_blob(encrypted.data)
-        
-
-
- 

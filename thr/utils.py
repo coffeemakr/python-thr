@@ -1,8 +1,7 @@
 import hmac
 
 EMAIL_HMAC_KEY = b'0\xa5P\x0f\xed\x97\x01\xfam\xef\xdba\x08A\x90\x0f\xeb\xb8\xe40\x88\x1fz\xd8\x16\x82bd\xec\t\xba\xd7'
-
-PHONE_HMAC_KEY = bytes.fromhex("85adf8226953f3d96cfd5d09bf29555eb955fcd8aa5ec4f9fcd869e258370723")
+PHONE_HMAC_KEY = b'\x85\xad\xf8"iS\xf3\xd9l\xfd]\t\xbf)U^\xb9U\xfc\xd8\xaa^\xc4\xf9\xfc\xd8i\xe2X7\x07#'
 
 def hash_email(email: str):
     '''
@@ -13,16 +12,16 @@ def hash_email(email: str):
     '''
     return hmac.digest(
         key=EMAIL_HMAC_KEY, 
-        msg=email.strip().lower(), 
-        digestmod="sha256")
+        msg=email.strip().lower().encode("ascii"), 
+        digest="sha256").hex()
 
 def hash_phone(phone):
     '''
 
     >>> hash_phone("41791234567")
-    85adf8226953f3d96cfd5d09bf29555eb955fcd8aa5ec4f9fcd869e258370723
+    ad398f4d7ebe63c6550a486cc6e07f9baa09bd9d8b3d8cb9d9be106d35a7fdbc
     '''
     return hmac.digest(
-        key=EMAIL_HMAC_KEY, 
-        msg=phone, 
-        digestmod="sha256")
+        key=PHONE_HMAC_KEY, 
+        msg=phone.encode("ascii"), 
+        digest="sha256").hex()
