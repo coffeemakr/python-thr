@@ -10,16 +10,20 @@ import os
 
 __version__ = '0.3'
 
+
 class ApiException(Exception):
     pass
 
+
 class NotFoundException(ApiException):
     pass
+
 
 class IdentityNotFound(NotFoundException):
     def __init__(self, identity):
         super().__init__(f"Identity '{identity}' was not found")
         self.identity = identity
+
 
 def _url_join(base_url, *parts):
     return base_url + '/'.join(map(urllib.parse.quote, parts))
@@ -39,6 +43,7 @@ class Contact:
 
     This includes a identity and the public key.
     '''
+
     def __init__(self, identity: str, public_key: PublicKey):
         _check_identity(identity)
         self.identity = identity
@@ -60,7 +65,7 @@ class Threema:
 
     # exact version should is not included
     user_agent = "python-thr/0"
-    
+
     def __init__(self, identity: str, secret, key, base_url="https://msgapi.threema.ch/"):
         if not isinstance(key, SecretKey):
             if len(key) == 32:
@@ -115,7 +120,6 @@ class Threema:
         response.raise_for_status()
         return response.text
 
-
     def lookup_identity_by_email(self, email) -> str:
         identity = self._query_text("GET", "lookup", "email_hash", hash_email(email), params={
             'from': self.identity,
@@ -152,7 +156,6 @@ class Threema:
         except NotFoundException:
             raise IdentityNotFound(identity)
         return PublicKey(bytes.fromhex(hex_pubkey))
-
 
     def get_credits(self) -> int:
         credits = self._query_text("GET", "credits", params={
@@ -209,7 +212,7 @@ class Threema:
             message=message,
             recipient=recipient)
 
-    def upload_file(self, filename: Optional[Text] = None, content: Optional[bytes]=None, mimetype=None, key=None) -> FileMessage:
+    def upload_file(self, filename: Optional[Text] = None, content: Optional[bytes] = None, mimetype=None, key=None) -> FileMessage:
         '''
         Upload a file and prepare a file message for it.
 
@@ -239,7 +242,7 @@ class Threema:
     def upload_thumbnail(self, content: bytes, key) -> bytes:
         '''
         Uploads a thumbnail, encrypted with the specified key.
-        
+
         The key must be the same as the one used to encrytp the file
         for the thumbnail to work.
 
