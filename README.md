@@ -1,6 +1,13 @@
 # Thr
 A small Threema Gateway library that focuses on easy usage.
 
+## Functionality
+
+ - [x] Send text messages
+ - [x] Send files
+ - [x] Lookup contacts
+ - [ ] Receive messages
+
 ## Usage
 First, initialize the API without own API secrets.
 ```py
