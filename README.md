@@ -38,9 +38,17 @@ threema.send_message(recipient=contact, message=message)
 ### Send a File
 If you want to send a file with a thumbnail attached, you have to upload the thumbnail as well.
 The key must be the same, as the one for the file.
+
 ```py
-message = threema.upload_file("test-image.jpg")
-message.thumbnail_blob_id = threema.upload_thumbnail("thumbnail.jpg", key=message.key)
+# Upload the file
+message = threema.upload_file(filename="image.jpg")
+
+# Optionally upload a thumbnail
+with open("thumbnail.jpg", "rb") as thumnail_file:
+    thumbnail_content = thumnail_file.read()
+message.thumbnail_blob_id = threema.upload_thumbnail(thumbnail_content, key=message.key)
+
+# Send the message
 threema.send_message(
     message=message, 
     recipient=contact)

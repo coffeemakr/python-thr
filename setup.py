@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 setup(
     name="thr",
-    version="0.2",
+    version="0.3",
     description="Minimal Threema Gateway library",
     url="http://github.com/coffeemakr/python-thr",
     author="coffeemakr",
