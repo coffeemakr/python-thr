@@ -1,5 +1,6 @@
 import secrets
-from typing import Optional
+from typing import Optional, Union
+from pathlib import Path
 import json
 from .crypto import SYMMETRIC_KEY_LENGTH
 
@@ -9,10 +10,10 @@ def generate_padding(length: Optional[int] = None) -> bytes:
     Generates a padding with a random length or the specified length if the
     parameter `length` is used.
     '''
-    if length < 0 or length > 255:
-        raise ValueError("length must be between 0 and 255 (inclusive).")
     if length is None:
         length = secrets.randbelow(256)
+    elif length < 0 or length > 255:
+        raise ValueError("length must be between 0 and 255 (inclusive).")
     padding = length.to_bytes(1, byteorder='big')
     return padding * length
 
@@ -87,12 +88,12 @@ class FileMessage(Message):
     type_byte = b'\x17'
 
     def __init__(self, blob_id: bytes, size: int, key: bytes, mime_type: str,
-                 filename: str = None, thumbnail_blob_id=None, description=None):
+                 filename: Union[str, Path] = None, thumbnail_blob_id=None, description=None):
         self.blob_id = blob_id
         self.size = size
         self.key = _require_size("key", key, SYMMETRIC_KEY_LENGTH)
         self.mime_type = mime_type
-        self.filename = filename
+        self.filename = str(filename)
         self.thumbnail_blob_id = thumbnail_blob_id
         self.description = description
 
@@ -114,5 +115,4 @@ class FileMessage(Message):
         if self.thumbnail_blob_id is not None:
             value['t'] = self.thumbnail_blob_id.hex()
         result = json.dumps(value, separators=(',', ':')).encode('utf-8')
-        print(result)
         return result

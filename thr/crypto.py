@@ -20,6 +20,10 @@ def box_encrypt(content: bytes, secret_key: SecretKey, public_key: PublicKey) ->
     '''
     Encrypt the content for the public_key using the secret_key.
     '''
+    if secret_key is None:
+        raise ValueError("secret_key may not be None")
+    if public_key is None:
+        raise ValueError("public_key may not be None")
     if isinstance(public_key, bytes):
         public_key = libnacl.public.PublicKey(public_key)
     if isinstance(secret_key, bytes):

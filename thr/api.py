@@ -4,12 +4,22 @@ from .utils import hash_email, hash_phone
 import requests
 import urllib.parse
 from collections import namedtuple
-from typing import Text
+from typing import Text, Union, Optional
 import mimetypes
 import os
 
-__version__ = '0.1'
+__version__ = '0.3'
 
+class ApiException(Exception):
+    pass
+
+class NotFoundException(ApiException):
+    pass
+
+class IdentityNotFound(NotFoundException):
+    def __init__(self, identity):
+        super().__init__(f"Identity '{identity}' was not found")
+        self.identity = identity
 
 def _url_join(base_url, *parts):
     return base_url + '/'.join(map(urllib.parse.quote, parts))
@@ -24,6 +34,11 @@ RemoteBlob = namedtuple("RemoteBlob", ["id", "key"])
 
 
 class Contact:
+    '''
+    A contact represents a fully resolved recipient.
+
+    This includes a identity and the public key.
+    '''
     def __init__(self, identity: str, public_key: PublicKey):
         _check_identity(identity)
         self.identity = identity
@@ -35,8 +50,17 @@ class Contact:
 
 
 class Threema:
+    '''
+    The Threema Gateway API client. 
+
+    This is the main entry point to communicate to the gateway API.
+    '''
+
     key: SecretKey
 
+    # exact version should is not included
+    user_agent = "python-thr/0"
+    
     def __init__(self, identity: str, secret, key, base_url="https://msgapi.threema.ch/"):
         if not isinstance(key, SecretKey):
             if len(key) == 32:
@@ -53,7 +77,7 @@ class Threema:
         self.base_url = base_url
 
     @classmethod
-    def from_environment(cls):
+    def from_environment(cls) -> 'Threema':
         secret = os.environ.get("THREEMA_SECRET")
         if secret is None:
             raise ValueError("THREEMA_SECRET is not set")
@@ -69,40 +93,73 @@ class Threema:
         return cls(identity=identity, secret=secret, key=key)
 
     def _query(self, method, *url_parts, **kwargs):
+        headers = {
+            "User-Agent": self.user_agent,
+        }
         url = _url_join(self.base_url, *url_parts)
-        respone = requests.request(method, url, **kwargs)
-        print(respone.text)
-        respone.raise_for_status()
-        return respone
+        response = requests.request(method, url, headers=headers, **kwargs)
+        if response.status_code == 404:
+            raise NotFoundException("Ressource not found")
+        response.raise_for_status()
+        return response
+
+    def _query_text(self, method, *url_parts, **kwargs):
+        headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "text/plain",
+        }
+        url = _url_join(self.base_url, *url_parts)
+        response = requests.request(method, url, headers=headers, **kwargs)
+        if response.status_code == 404:
+            raise NotFoundException("Ressource not found")
+        response.raise_for_status()
+        return response.text
+
 
     def lookup_identity_by_email(self, email) -> str:
-        r = self._query("GET", "lookup", "email_hash", hash_email(email), params={
+        identity = self._query_text("GET", "lookup", "email_hash", hash_email(email), params={
             'from': self.identity,
             'secret': self.secret
         })
-        return r.text
+        _check_identity(identity)
+        return identity
 
     def lookup_identity_by_phone(self, phone) -> str:
-        r = self._query("GET", "lookup", "phone_hash", hash_phone(phone), params={
+        '''
+        Retrieves the identity based pon the phone number.
+
+        The phone number will be hashed prior to querrying the API.
+        '''
+        identity = self._query_text("GET", "lookup", "phone_hash", hash_phone(phone), params={
             'from': self.identity,
             'secret': self.secret
         })
-        return r.text
+        _check_identity(identity)
+        return identity
 
     def lookup_pubkey(self, identity: str) -> PublicKey:
+        '''
+        Queries the API for the public key of the specified identity.
+
+        Raises IdentityNotFound if the identity doesn't exist.
+        '''
         _check_identity(identity)
-        response = self._query("GET", 'pubkeys', identity, params={
-            'from': self.identity,
-            'secret': self.secret
-        })
-        return PublicKey(bytes.fromhex(response.text))
+        try:
+            hex_pubkey = self._query_text("GET", 'pubkeys', identity, params={
+                'from': self.identity,
+                'secret': self.secret
+            })
+        except NotFoundException:
+            raise IdentityNotFound(identity)
+        return PublicKey(bytes.fromhex(hex_pubkey))
+
 
     def get_credits(self) -> int:
-        r = self._query("GET", "credits", params={
+        credits = self._query_text("GET", "credits", params={
             'from': self.identity,
             'secret': self.secret
         })
-        return int(r.text)
+        return int(credits)
 
     def lookup(self, identity: str) -> Contact:
         public_key = self.lookup_pubkey(identity)
@@ -112,11 +169,11 @@ class Threema:
         '''
         Uploads a blob and returns the blob ID in binary form.
         '''
-        response = self._query("POST", 'upload_blob', params={
+        hex_blob_id = self._query_text("POST", 'upload_blob', params={
             'from': self.identity,
             'secret': self.secret
         }, files={'blob': ('blob', data, 'application/octet-stream')})
-        return bytes.fromhex(response.text)
+        return bytes.fromhex(hex_blob_id)
 
     def upload_blob(self, data: bytes, key=None) -> RemoteBlob:
         '''
@@ -152,20 +209,24 @@ class Threema:
             message=message,
             recipient=recipient)
 
-    def upload_file(self, filename: Text, mimetype=None, key=None) -> FileMessage:
+    def upload_file(self, filename: Optional[Text] = None, content: Optional[bytes]=None, mimetype=None, key=None) -> FileMessage:
         '''
         Upload a file and prepare a file message for it.
 
         This function will pre-fill the following fields:
          * size
          * mime_type
-         * size
          * blob_id
          * key
          * filename
         '''
-        with open(filename, 'rb') as infile:
-            content = infile.read()
+        if filename is not None:
+            with open(filename, 'rb') as infile:
+                content = infile.read()
+
+            filename = os.path.basename(filename)
+        elif content is None:
+            raise ValueError("Either content or filename has to be provided")
 
         if mimetype is None:
             mimetype, _ = mimetypes.guess_type(
@@ -175,20 +236,14 @@ class Threema:
 
         return FileMessage(blob_id=blob.id, key=blob.key, mime_type=mimetype, size=len(content), filename=filename)
 
-    def upload_thumbnail(self, filename: Text, key) -> FileMessage:
+    def upload_thumbnail(self, content: bytes, key) -> bytes:
         '''
-        Upload a file and prepare a file message for it.
+        Uploads a thumbnail, encrypted with the specified key.
+        
+        The key must be the same as the one used to encrytp the file
+        for the thumbnail to work.
 
-        This function will pre-fill the following fields:
-         * size
-         * mime_type
-         * size
-         * blob_id
-         * key
-         * filename
+        Returns the blob ID of the thumbnail.
         '''
-        with open(filename, 'rb') as infile:
-            content = infile.read()
-
         encrypted = encrypt_thumbnail(content=content, key=key)
         return self.upload_raw_blob(encrypted.data)
