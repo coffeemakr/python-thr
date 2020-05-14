@@ -212,7 +212,9 @@ class Threema:
             message=message,
             recipient=recipient)
 
-    def upload_file(self, filename: Optional[Text] = None, content: Optional[bytes] = None, mimetype=None, key=None) -> FileMessage:
+    def upload_file(self, filename: Optional[Text] = None, 
+                    content: Optional[bytes] = None, 
+                    mimetype=None, key=None) -> FileMessage:
         '''
         Upload a file and prepare a file message for it.
 
@@ -231,13 +233,13 @@ class Threema:
         elif content is None:
             raise ValueError("Either content or filename has to be provided")
 
-        if mimetype is None:
-            mimetype, _ = mimetypes.guess_type(
-                filename) or 'application/octet-stream'
+        if mimetype is None and filename is not None:
+            mimetype, _ = mimetypes.guess_type(filename) or 'application/octet-stream'
 
         blob = self.upload_blob(data=content, key=key)
 
-        return FileMessage(blob_id=blob.id, key=blob.key, mime_type=mimetype, size=len(content), filename=filename)
+        return FileMessage(blob_id=blob.id, key=blob.key, mime_type=mimetype, 
+                           size=len(content), filename=filename)
 
     def upload_thumbnail(self, content: bytes, key) -> bytes:
         '''
