@@ -1,8 +1,7 @@
-import struct
 import secrets
-from typing import Tuple, Optional
+from typing import Optional
 import json
-from .crypto import NONCE_LENGTH, SYMMETRIC_KEY_LENGTH
+from .crypto import SYMMETRIC_KEY_LENGTH
 
 
 def generate_padding(length: Optional[int] = None) -> bytes:
@@ -82,12 +81,13 @@ class ImageMessage(Message):
 
 class FileMessage(Message):
     '''
-    A file message references an uploaded "blob" which can be an arbitrary 
+    A file message references an uploaded "blob" which can be an arbitrary
     file type.
     '''
     type_byte = b'\x17'
 
-    def __init__(self, blob_id: bytes, size: int, key: bytes, mime_type: str, filename: str = None, thumbnail_blob_id=None, description=None):
+    def __init__(self, blob_id: bytes, size: int, key: bytes, mime_type: str,
+                 filename: str = None, thumbnail_blob_id=None, description=None):
         self.blob_id = blob_id
         self.size = size
         self.key = _require_size("key", key, SYMMETRIC_KEY_LENGTH)
