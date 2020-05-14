@@ -15,7 +15,7 @@ def send_image(recipient):
 
     threema = thr.Threema.from_environment()
     # Upload the file
-    message = threema.upload_file(data_dir /  "image.jpg")
+    message = threema.upload_file(filename=data_dir /  "image.jpg")
 
     # Upload the thumbnail
     with open(data_dir / "thumbnail.jpg", "rb") as thumnail_file:
