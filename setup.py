@@ -8,10 +8,10 @@ setup(
     packages=find_packages(),
     test_suite='nose.collector',
     tests_require=['nose'],
-    license="MIT",
+    license='Unlicense',
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: Public Domain",
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
